@@ -1,0 +1,131 @@
+# Upper Confidence Bound (UCB) Implementation
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# --- 1. UCB Algorithm Class ---
+
+class UpperConfidenceBound:
+    """
+    Implements the Upper Confidence Bound (UCB) algorithm for the multi-armed bandit problem.
+
+    Attributes:
+        num_arms (int): The number of arms (e.g., ads).
+        counts (np.array): Number of times each arm has been pulled.
+        values (np.array): Sum of rewards for each arm.
+        total_rounds (int): The total number of rounds elapsed.
+    """
+    def __init__(self, num_arms):
+        """Initializes the UCB solver."""
+        if num_arms <= 0:
+            raise ValueError("Number of arms must be a positive integer.")
+        self.num_arms = num_arms
+        self.counts = np.zeros(num_arms, dtype=int)
+        self.values = np.zeros(num_arms, dtype=float)
+        self.total_rounds = 0
+
+    def select_arm(self):
+        """
+        Selects an arm to pull based on the UCB strategy.
+
+        Initially, it plays each arm once. Subsequently, it selects the arm
+        with the highest Upper Confidence Bound.
+
+        Returns:
+            int: The index of the arm to pull.
+        """
+        # Play each arm once to gather initial data
+        for arm in range(self.num_arms):
+            if self.counts[arm] == 0:
+                return arm
+
+        # For subsequent rounds, calculate UCB for each arm
+        avg_reward = self.values / self.counts
+        delta = np.sqrt(2 * np.log(self.total_rounds) / self.counts)
+        ucb_values = avg_reward + delta
+
+        # Return the arm with the highest UCB value (exploitation + exploration)
+        return np.argmax(ucb_values)
+
+    def update(self, arm, reward):
+        """
+        Updates the state of the chosen arm with the observed reward.
+
+        Args:
+            arm (int): The index of the arm that was pulled.
+            reward (float): The reward received from pulling the arm (e.g., 1 for a click, 0 for no click).
+        """
+        self.counts[arm] += 1
+        self.values[arm] += reward
+        self.total_rounds += 1
+
+
+# --- 2. Main Execution Block ---
+
+if __name__ == '__main__':
+    # Load the dataset
+    try:
+        dataset = pd.read_csv('Ads_CTR_Optimisation.csv')
+    except FileNotFoundError:
+        print("Warning: 'Ads_CTR_Optimisation.csv' not found.")
+        print("Using a randomly generated dummy dataset for demonstration.")
+        # Create a dummy dataset if the original file is missing
+        N_dummy, d_dummy = 10000, 10
+        # Create a dataset where one ad is clearly better than others
+        dummy_data = np.random.rand(N_dummy, d_dummy) < 0.1  # Base CTR of 10%
+        dummy_data[:, 4] = np.random.rand(N_dummy) < 0.35 # Ad 4 has a 35% CTR
+        dataset = pd.DataFrame(dummy_data.astype(int))
+
+    # --- 3. Simulation Setup ---
+    
+    # Get dimensions from the dataset
+    N = dataset.shape[0]  # Number of users (rounds)
+    d = dataset.shape[1]  # Number of ads (arms)
+
+    # Initialize the UCB algorithm solver
+    ucb_solver = UpperConfidenceBound(num_arms=d)
+
+    # Store results
+    ads_selected = []
+    total_reward = 0
+
+    # --- 4. Run the Simulation ---
+    
+    for n in range(N):
+        # Select an ad to display to the user
+        selected_arm = ucb_solver.select_arm()
+        ads_selected.append(selected_arm)
+
+        # Get the reward from the dataset (1 if the user clicked, 0 otherwise)
+        reward = dataset.values[n, selected_arm]
+
+        # Update the UCB algorithm with the reward
+        ucb_solver.update(arm=selected_arm, reward=reward)
+
+    # The total reward is the sum of rewards in the solver
+    total_reward = np.sum(ucb_solver.values)
+
+    # --- 5. Display Results and Visualize ---
+    
+    print("--- UCB Algorithm Results ---")
+    print(f"Total rounds: {N}")
+    print(f"Total reward accumulated: {int(total_reward)}")
+    
+    # Find the best arm based on empirical average reward
+    best_ad_index = np.argmax(ucb_solver.values / ucb_solver.counts)
+    print(f"\nBest ad identified by UCB: Ad {best_ad_index}")
+    print("\nReward statistics per ad:")
+    for i in range(d):
+        print(f"  Ad {i}: Selected {ucb_solver.counts[i]} times, Total Reward: {int(ucb_solver.values[i])}")
+
+    # Plotting the histogram of ads selections
+    plt.style.use('seaborn-v0_8-whitegrid')
+    plt.figure(figsize=(12, 7))
+    plt.hist(ads_selected, bins=np.arange(d + 1) - 0.5, rwidth=0.8, alpha=0.9, label='Selections per Ad')
+    plt.title('Histogram of Ad Selections using UCB', fontsize=16)
+    plt.xlabel('Ad Index', fontsize=12)
+    plt.ylabel('Number of Times Selected', fontsize=12)
+    plt.xticks(range(d))
+    plt.legend()
+    plt.show()
