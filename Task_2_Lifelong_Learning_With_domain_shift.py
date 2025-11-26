@@ -1,14 +1,3 @@
-# It implements a custom Convolutional Neural Network (CNN) trained from scratch
-# using a "Learning without Prejudice" (LwP) style continual learning strategy
-# enhanced with Experience Replay to handle the domain shifts present in
-# datasets D11 through D20.
-#
-# Key Features:
-# 1. No Pre-trained Model: A custom CNN is defined and trained from scratch.
-# 2. Experience Replay: A memory buffer stores samples from past tasks to mitigate
-#    catastrophic forgetting when the data distribution changes.
-
-
 import os
 import torch
 import torch.nn as nn
@@ -16,7 +5,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 import random
 
-# --- Configuration ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
@@ -27,7 +15,6 @@ UPDATE_EPOCHS = 10
 TEMPERATURE = 2.0
 MEMORY_SIZE_PER_TASK = 100
 
-# --- 1. End-to-End Continual CNN Model (from Scratch) ---
 class ContinualCNN(nn.Module):
     def __init__(self, num_classes=10):
         super(ContinualCNN, self).__init__()
@@ -56,7 +43,6 @@ class ContinualCNN(nn.Module):
         x = self.classifier(x)
         return x
 
-# --- 2. Experience Replay Buffer ---
 class ExperienceReplayBuffer:
     def __init__(self, memory_size_per_task):
         self.memory_size_per_task = memory_size_per_task
@@ -76,9 +62,7 @@ class ExperienceReplayBuffer:
         all_labels = torch.cat([labels for images, labels in self.buffer], dim=0)
         return torch.utils.data.TensorDataset(all_images, all_labels)
 
-# --- 3. Data Loading and Formatting Utilities ---
 def load_data(task_folder, task_id):
-    """Loads the train and test data for a specific task."""
     train_path = os.path.join(task_folder, f'D{task_id}_train.pt')
     test_path = os.path.join(task_folder, f'D{task_id}_test.pt')
     train_data = torch.load(train_path)
@@ -88,21 +72,16 @@ def load_data(task_folder, task_id):
     return train_dataset, test_dataset
 
 def format_matrix_string(matrix):
-    """Formats a list of lists into a readable string."""
     s = ""
     for row in matrix:
         s += '[ ' + ' '.join([f'{val:6.2f}' for val in row]) + ' ]\n'
     return s
 
-# --- 4. Knowledge Distillation Loss ---
 def distillation_loss(y, teacher_scores, T):
-    """Computes the KL divergence between student and teacher logits."""
     return nn.KLDivLoss(reduction='batchmean')(F.log_softmax(y / T, dim=1),
-                                             F.softmax(teacher_scores / T, dim=1)) * (T * T)
+                                              F.softmax(teacher_scores / T, dim=1)) * (T * T)
 
-# --- 5. Training and Evaluation Functions ---
 def evaluate(model, test_loader):
-    """Evaluates the model's accuracy on a given test set."""
     model.eval()
     correct, total = 0, 0
     with torch.no_grad():
@@ -115,7 +94,6 @@ def evaluate(model, test_loader):
     return 100 * correct / total
 
 def train_initial(model, train_loader, optimizer, criterion, epochs):
-    """Trains the model on the first, fully labeled dataset (D1)."""
     model.train()
     for epoch in range(epochs):
         for images, labels in train_loader:
@@ -128,7 +106,6 @@ def train_initial(model, train_loader, optimizer, criterion, epochs):
         print(f"Initial Training: Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
 def train_update(model, old_model, train_loader, optimizer, criterion, replay_loader):
-    """Updates the model on a new, unlabeled task using LwP and Experience Replay."""
     model.train()
     old_model.eval()
     for epoch in range(UPDATE_EPOCHS):
@@ -160,9 +137,7 @@ def train_update(model, old_model, train_loader, optimizer, criterion, replay_lo
             optimizer.step()
         print(f"Update Training: Epoch [{epoch+1}/{UPDATE_EPOCHS}], Loss: {total_loss.item():.4f}")
 
-# --- 6. Main Execution ---
 def run_task2_experiment():
-    """Runs the full lifelong learning experiment for Task 2."""
     print(f"\n{'='*20} RUNNING TASK 2 (WITH DOMAIN SHIFT) {'='*20}")
     
     task_folder = 'data/task2_domain_shift'
@@ -188,7 +163,6 @@ def run_task2_experiment():
     
     accuracy_matrix = [[0.0 for _ in range(num_tasks + 1)] for _ in range(num_tasks)]
     
-    # --- Sequential Training Loop ---
     for i in range(num_tasks):
         task_id = start_id + i
         print(f"\n--- Training on Task {task_id} ---")
@@ -207,26 +181,21 @@ def run_task2_experiment():
         replay_buffer.add(train_data)
 
         print(f"--- Evaluating model after training on Task {task_id} ---")
-        # Evaluate on D1
         acc_d1 = evaluate(model, all_test_loaders[0])
         accuracy_matrix[i][0] = acc_d1
         print(f"  Accuracy on Task D1 test set: {acc_d1:.2f}%")
-        # Evaluate on D11 through current task
         for j in range(i + 1):
-            eval_task_id = start_id + j
             acc = evaluate(model, all_test_loaders[j+1])
             accuracy_matrix[i][j+1] = acc
-            print(f"  Accuracy on Task {eval_task_id} test set: {acc:.2f}%")
+            print(f"  Accuracy on Task {start_id + j} test set: {acc:.2f}%")
             
     return accuracy_matrix
 
 if __name__ == '__main__':
     accuracy_matrix_2 = run_task2_experiment()
-
     print("\n\n" + "="*50)
     print("FINAL RESULTS FOR TASK 2 (FROM SCRATCH)")
     print("="*50)
     print("\n--- Accuracy Matrix for Task 2 (With Domain Shift & Experience Replay) ---")
     print("Rows: Model after Task i, Cols: Accuracy on Task j test set")
     print(format_matrix_string(accuracy_matrix_2))
-
